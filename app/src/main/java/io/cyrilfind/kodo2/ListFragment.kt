@@ -1,8 +1,6 @@
 package io.cyrilfind.kodo2
 
-import android.content.Intent
 import android.os.Bundle
-import android.system.Os.remove
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,10 +13,10 @@ import java.io.Serializable
  * A simple [Fragment] subclass as the default destination in the navigation.
  */
 class ListFragment : Fragment() {
+    private var tasks: List<Task> = listOf(Task(newUuid(), "Task 1", "Description 1"))
 
     private lateinit var binding: FragmentListBinding
 
-    var tasks: List<Task> = listOf(Task(newUuid(), "Task 1", "Description 1"))
     private val adapter = TaskListAdapter(object : TaskListListener {
         override fun onClickEdit(task: Task) {
             findNavController().currentBackStackEntry?.savedStateHandle?.set(TASK_KEY, task)
