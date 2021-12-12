@@ -5,8 +5,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import io.cyrilfind.kodo2.databinding.FragmentListBinding
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import java.io.Serializable
 
 /**
@@ -14,6 +17,7 @@ import java.io.Serializable
  */
 class ListFragment : Fragment() {
     private var tasks: List<Task> = listOf(Task(newUuid(), "Task 1", "Description 1"))
+    private val tasksRepository = TasksRepository()
 
     private lateinit var binding: FragmentListBinding
 
@@ -55,10 +59,16 @@ class ListFragment : Fragment() {
                 findNavController().currentBackStackEntry?.savedStateHandle?.remove<Task>(TASK_KEY)
             }
 
+        lifecycleScope.launch {
+            tasksRepository.taskList.collect {
+                tasks = it
+                adapter.submitList(it)
+            }
+        }
+
         binding.fab.setOnClickListener {
             findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
         }
-
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

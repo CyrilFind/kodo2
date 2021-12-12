@@ -14,7 +14,7 @@ class FormActivity : AppCompatActivity() {
         val task = intent.getSerializableExtra(TASK_KEY) as? Task
         binding.editTitle.setText(task?.title ?: "title")
         binding.editDescription.setText(task?.description ?: "description")
-
+        
         val id = task?.id ?: newUuid()
         binding.validateButton.setOnClickListener {
             val newTitle = binding.editTitle.text.toString()
