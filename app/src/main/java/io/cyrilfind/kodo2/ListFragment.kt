@@ -10,14 +10,12 @@ import androidx.navigation.fragment.findNavController
 import io.cyrilfind.kodo2.databinding.FragmentListBinding
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import java.io.Serializable
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
  */
 class ListFragment : Fragment() {
-    private var tasks: List<Task> = listOf(Task(newUuid(), "Task 1", "Description 1"))
-    private val tasksRepository = TasksRepository()
+    private val tasksRepository = ServiceLocator.tasksRepository
 
     private lateinit var binding: FragmentListBinding
 
@@ -30,7 +28,6 @@ class ListFragment : Fragment() {
         override fun onClickRemove(task: Task) {
             TODO("Not yet implemented")
         }
-
     })
 
     override fun onCreateView(
@@ -44,24 +41,10 @@ class ListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val previousList = savedInstanceState?.getSerializable("tasks") as? List<Task>
-        if (previousList != null) tasks = previousList
-
         binding.tasksRecyclerView.adapter = adapter
-        adapter.submitList(tasks)
-        findNavController().currentBackStackEntry?.savedStateHandle
-            ?.getLiveData<Task>(TASK_KEY)
-            ?.observe(viewLifecycleOwner) { newTask ->
-                val oldTask = tasks.firstOrNull { it.id == newTask.id }
-                if (oldTask != null) tasks = tasks - oldTask
-                tasks = tasks + newTask
-                adapter.submitList(tasks)
-                findNavController().currentBackStackEntry?.savedStateHandle?.remove<Task>(TASK_KEY)
-            }
 
         lifecycleScope.launch {
             tasksRepository.taskList.collect {
-                tasks = it
                 adapter.submitList(it)
             }
         }
@@ -69,11 +52,7 @@ class ListFragment : Fragment() {
         binding.fab.setOnClickListener {
             findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
         }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putSerializable("tasks", tasks as Serializable)
+        lifecycleScope.launch { tasksRepository.refresh() }
     }
 
 }

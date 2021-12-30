@@ -17,15 +17,19 @@ import androidx.lifecycle.lifecycleScope
 import coil.load
 import com.google.android.material.snackbar.Snackbar
 import com.google.modernstorage.mediastore.FileType
-import com.google.modernstorage.mediastore.Internal
 import com.google.modernstorage.mediastore.MediaStoreRepository
+import com.google.modernstorage.mediastore.SharedPrimary
 import io.cyrilfind.kodo2.databinding.FragmentProfileBinding
 import kotlinx.coroutines.launch
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.*
 
 
 class ProfileFragment : Fragment() {
+
     lateinit var binding: FragmentProfileBinding
-    private var photoUri: Uri? = null
+    private lateinit var photoUri: Uri
     private val mediaStore by lazy { MediaStoreRepository(requireContext()) }
 
     private val permissionAndCameraLauncher =
@@ -34,21 +38,34 @@ class ProfileFragment : Fragment() {
             else showExplanation()
         }
 
+    private val storagePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { accepted ->
+            if (accepted) initUri()
+            else showExplanation()
+        }
+
     private val cameraLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { accepted ->
-            if (accepted) binding.imageView.load(photoUri)
+            if (accepted) handleImage()
             else Snackbar.make(requireView(), "Capture failed", Snackbar.LENGTH_LONG)
         }
 
-    init {
+    private fun handleImage() {
+        binding.imageView.load(photoUri)
+        val body = convert(photoUri)
         lifecycleScope.launch {
-            photoUri = mediaStore.createMediaUri(
-                filename = "picture.jpg",
-                type = FileType.IMAGE,
-                location = Internal
-            ).getOrThrow()
+            ServiceLocator.userWebService.updateAvatar(body)
         }
     }
+
+    private fun convert(uri: Uri): MultipartBody.Part {
+        return MultipartBody.Part.createFormData(
+            name = "avatar",
+            filename = "temp.jpeg",
+            body = requireContext().contentResolver.openInputStream(uri)!!.readBytes().toRequestBody()
+        )
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -61,15 +78,39 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.takePictureButton.setOnClickListener {
-            val camPermission = Manifest.permission.CAMERA
-            val permissionStatus = checkSelfPermission(requireContext(), camPermission)
-            val isAlreadyAccepted = permissionStatus == PackageManager.PERMISSION_GRANTED
-            val isExplanationNeeded = shouldShowRequestPermissionRationale(camPermission)
-            when {
-                isAlreadyAccepted -> launchCamera()
-                isExplanationNeeded -> showExplanation()
-                else -> permissionAndCameraLauncher.launch(camPermission)
+            launchCameraWithPermission()
+        }
+        lifecycleScope.launch {
+            val userInfo = ServiceLocator.userWebService.getInfo().body()!!
+            binding.imageView.load(userInfo.avatarUrl) {
+                // affiche une image par défaut en cas d'erreur:
+                error(R.drawable.ic_launcher_background)
             }
+        }
+        if (!mediaStore.canWriteSharedEntries()) storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        else initUri()
+
+    }
+
+    private fun initUri() {
+        lifecycleScope.launch {
+            photoUri = mediaStore.createMediaUri(
+                filename = "picture-${UUID.randomUUID()}.jpg",
+                type = FileType.IMAGE,
+                location = SharedPrimary
+            ).getOrThrow()
+        }
+    }
+
+    private fun launchCameraWithPermission() {
+        val camPermission = Manifest.permission.CAMERA
+        val permissionStatus = checkSelfPermission(requireContext(), camPermission)
+        val isAlreadyAccepted = permissionStatus == PackageManager.PERMISSION_GRANTED
+        val isExplanationNeeded = shouldShowRequestPermissionRationale(camPermission)
+        when {
+            isAlreadyAccepted -> launchCamera()
+            isExplanationNeeded -> showExplanation()
+            else -> permissionAndCameraLauncher.launch(camPermission)
         }
     }
 
@@ -77,13 +118,14 @@ class ProfileFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setMessage("On a besoin de la caméra sivouplé ! 🥺")
             .setPositiveButton("Bon, ok") { _, _ -> launchAppSettings() }
+            .setNegativeButton("Nope") { dialog, _ -> dialog.dismiss() }
             .show()
     }
 
     private fun launchAppSettings() {
         val intent = Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", context?.packageName, null)
+            Uri.fromParts("package", requireContext().packageName, null)
         )
         startActivity(intent)
     }

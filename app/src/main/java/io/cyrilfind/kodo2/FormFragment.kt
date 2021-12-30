@@ -6,13 +6,16 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import io.cyrilfind.kodo2.databinding.FragmentFormBinding
+import kotlinx.coroutines.launch
 
 /**
  * A simple [Fragment] subclass as the second destination in the navigation.
  */
 class FormFragment : Fragment() {
+    private val tasksRepository = ServiceLocator.tasksRepository
 
     private lateinit var binding: FragmentFormBinding
 
@@ -37,8 +40,10 @@ class FormFragment : Fragment() {
             val newDescription = binding.editDescription.text.toString()
             val newTask = Task(id = id, title = newTitle, description = newDescription)
 
-            findNavController().previousBackStackEntry?.savedStateHandle?.set(TASK_KEY, newTask)
-            findNavController().popBackStack()
+            lifecycleScope.launch {
+                tasksRepository.createOrUpdateTask(newTask)
+                findNavController().popBackStack()
+            }
         }
     }
 }
