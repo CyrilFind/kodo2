@@ -1,10 +1,12 @@
 package io.cyrilfind.kodo2
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -16,55 +18,47 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import coil.load
 import com.google.android.material.snackbar.Snackbar
-import com.google.modernstorage.mediastore.FileType
-import com.google.modernstorage.mediastore.MediaStoreRepository
-import com.google.modernstorage.mediastore.SharedPrimary
+import com.google.modernstorage.permissions.RequestAccess
+import com.google.modernstorage.permissions.StoragePermissions
+import com.google.modernstorage.photopicker.PhotoPicker
 import io.cyrilfind.kodo2.databinding.FragmentProfileBinding
 import kotlinx.coroutines.launch
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.*
-
+import com.google.modernstorage.storage.AndroidFileSystem
 
 class ProfileFragment : Fragment() {
 
-    lateinit var binding: FragmentProfileBinding
+    private lateinit var binding: FragmentProfileBinding
     private lateinit var photoUri: Uri
-    private val mediaStore by lazy { MediaStoreRepository(requireContext()) }
+    private val fileSystem by lazy { AndroidFileSystem(requireContext()) }
 
-    private val permissionAndCameraLauncher =
+    private val requestCamera =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { accepted ->
             if (accepted) launchCamera()
             else showExplanation()
         }
 
-    private val storagePermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { accepted ->
-            if (accepted) initUri()
-            else showExplanation()
+    private val photoPicker =
+        registerForActivityResult(PhotoPicker()) { uris ->
+            if (uris.isNotEmpty()) {
+                photoUri = uris.first()
+                handleImage()
+            } else Snackbar.make(requireView(), "Capture failed", Snackbar.LENGTH_LONG)
         }
 
-    private val cameraLauncher =
+    private val openCamera =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { accepted ->
             if (accepted) handleImage()
             else Snackbar.make(requireView(), "Capture failed", Snackbar.LENGTH_LONG)
         }
 
-    private fun handleImage() {
-        binding.imageView.load(photoUri)
-        val body = convert(photoUri)
-        lifecycleScope.launch {
-            ServiceLocator.userWebService.updateAvatar(body)
+    private val requestStorage =
+        registerForActivityResult(RequestAccess()) { accepted ->
+            if (accepted) initUri()
+            else showExplanation()
         }
-    }
-
-    private fun convert(uri: Uri): MultipartBody.Part {
-        return MultipartBody.Part.createFormData(
-            name = "avatar",
-            filename = "temp.jpeg",
-            body = requireContext().contentResolver.openInputStream(uri)!!.readBytes().toRequestBody()
-        )
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -75,11 +69,34 @@ class ProfileFragment : Fragment() {
         return binding.root
     }
 
+    private fun handleImage() {
+        binding.imageView.load(photoUri)
+        val body = convert(photoUri)
+        lifecycleScope.launch {
+            ServiceLocator.userWebService.updateAvatar(body)
+        }
+    }
+
+    private fun convert(uri: Uri): MultipartBody.Part {
+        val fileInputStream = requireContext().contentResolver.openInputStream(uri)!!
+        val fileBody = fileInputStream.readBytes().toRequestBody()
+        return MultipartBody.Part.createFormData(
+            name = "avatar",
+            filename = "temp.jpeg",
+            body = fileBody
+        )
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.takePictureButton.setOnClickListener {
             launchCameraWithPermission()
         }
+
+        binding.uploadImageButton.setOnClickListener {
+            photoPicker.launch(PhotoPicker.Args(PhotoPicker.Type.IMAGES_ONLY, 1))
+        }
+
         lifecycleScope.launch {
             val userInfo = ServiceLocator.userWebService.getInfo().body()!!
             binding.imageView.load(userInfo.avatarUrl) {
@@ -87,19 +104,21 @@ class ProfileFragment : Fragment() {
                 error(R.drawable.ic_launcher_background)
             }
         }
-        if (!mediaStore.canWriteSharedEntries()) storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        else initUri()
-
+        requestStorage.launch(
+            RequestAccess.Args(
+                action = StoragePermissions.Action.READ_AND_WRITE,
+                types = listOf(StoragePermissions.FileType.Image),
+                createdBy = StoragePermissions.CreatedBy.Self
+            )
+        )
     }
 
     private fun initUri() {
-        lifecycleScope.launch {
-            photoUri = mediaStore.createMediaUri(
-                filename = "picture-${UUID.randomUUID()}.jpg",
-                type = FileType.IMAGE,
-                location = SharedPrimary
-            ).getOrThrow()
-        }
+        photoUri = fileSystem.createMediaStoreUri(
+            filename = "picture-${UUID.randomUUID()}.jpg",
+            collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            directory = "Todo",
+        )!!
     }
 
     private fun launchCameraWithPermission() {
@@ -110,7 +129,7 @@ class ProfileFragment : Fragment() {
         when {
             isAlreadyAccepted -> launchCamera()
             isExplanationNeeded -> showExplanation()
-            else -> permissionAndCameraLauncher.launch(camPermission)
+            else -> requestCamera.launch(camPermission)
         }
     }
 
@@ -131,6 +150,6 @@ class ProfileFragment : Fragment() {
     }
 
     private fun launchCamera() {
-        cameraLauncher.launch(photoUri)
+        openCamera.launch(photoUri)
     }
 }
