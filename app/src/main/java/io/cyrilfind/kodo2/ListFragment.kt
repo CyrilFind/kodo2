@@ -8,7 +8,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import io.cyrilfind.kodo2.databinding.FragmentListBinding
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -26,9 +25,13 @@ class ListFragment : Fragment() {
         }
 
         override fun onClickRemove(task: Task) {
-            TODO("Not yet implemented")
+            removeTask(task)
         }
     })
+
+    private fun removeTask(task: Task) {
+        adapter.submitList(adapter.currentList.filter { it.id != task.id })
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,

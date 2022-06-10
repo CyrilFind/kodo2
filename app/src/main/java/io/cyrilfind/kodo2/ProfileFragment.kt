@@ -16,32 +16,25 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import coil.load
 import com.google.android.material.snackbar.Snackbar
-import com.google.modernstorage.mediastore.FileType
-import com.google.modernstorage.mediastore.MediaStoreRepository
-import com.google.modernstorage.mediastore.SharedPrimary
+import com.google.modernstorage.permissions.RequestAccess
+import com.google.modernstorage.permissions.StoragePermissions
+import com.google.modernstorage.storage.SharedFileSystem
 import io.cyrilfind.kodo2.databinding.FragmentProfileBinding
 import kotlinx.coroutines.launch
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.*
 
-
 class ProfileFragment : Fragment() {
 
-    lateinit var binding: FragmentProfileBinding
+    private lateinit var binding: FragmentProfileBinding
     private lateinit var photoUri: Uri
-    private val mediaStore by lazy { MediaStoreRepository(requireContext()) }
 
-    private val permissionAndCameraLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { accepted ->
-            if (accepted) launchCamera()
-            else showExplanation()
-        }
+    private val sharedFileSystem by lazy { SharedFileSystem(requireContext()) }
+    private val storagePermissions by lazy { StoragePermissions(requireContext()) }
 
-    private val storagePermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { accepted ->
-            if (accepted) initUri()
-            else showExplanation()
+    private val permissionAndCameraLauncher = registerForActivityResult(RequestAccess()) {
+            
         }
 
     private val cameraLauncher =
@@ -62,7 +55,8 @@ class ProfileFragment : Fragment() {
         return MultipartBody.Part.createFormData(
             name = "avatar",
             filename = "temp.jpeg",
-            body = requireContext().contentResolver.openInputStream(uri)!!.readBytes().toRequestBody()
+            body = requireContext().contentResolver.openInputStream(uri)!!.readBytes()
+                .toRequestBody()
         )
     }
 
@@ -87,30 +81,18 @@ class ProfileFragment : Fragment() {
                 error(R.drawable.ic_launcher_background)
             }
         }
-        if (!mediaStore.canWriteSharedEntries()) storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        else initUri()
-
-    }
-
-    private fun initUri() {
-        lifecycleScope.launch {
-            photoUri = mediaStore.createMediaUri(
-                filename = "picture-${UUID.randomUUID()}.jpg",
-                type = FileType.IMAGE,
-                location = SharedPrimary
-            ).getOrThrow()
-        }
     }
 
     private fun launchCameraWithPermission() {
         val camPermission = Manifest.permission.CAMERA
+        val storagePermission = Manifest.permission.WRITE_EXTERNAL_STORAGE
         val permissionStatus = checkSelfPermission(requireContext(), camPermission)
         val isAlreadyAccepted = permissionStatus == PackageManager.PERMISSION_GRANTED
         val isExplanationNeeded = shouldShowRequestPermissionRationale(camPermission)
         when {
-            isAlreadyAccepted -> launchCamera()
+            storagePermissions.() && isAlreadyAccepted -> launchCamera()
             isExplanationNeeded -> showExplanation()
-            else -> permissionAndCameraLauncher.launch(camPermission)
+            else -> permissionAndCameraLauncher.launch(arrayOf(camPermission, storagePermission))
         }
     }
 
@@ -131,6 +113,12 @@ class ProfileFragment : Fragment() {
     }
 
     private fun launchCamera() {
-        cameraLauncher.launch(photoUri)
+        lifecycleScope.launch {
+            photoUri = sharedFileSystem.createMediaStoreUri(
+                filename = "picture-${UUID.randomUUID()}.jpg",
+                directory = "pictures"
+            )!!
+            cameraLauncher.launch(photoUri)
+        }
     }
 }

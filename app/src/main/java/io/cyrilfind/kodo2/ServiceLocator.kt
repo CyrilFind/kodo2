@@ -1,10 +1,13 @@
 package io.cyrilfind.kodo2
 
 import android.content.Context
+import com.chuckerteam.chucker.api.ChuckerCollector
+import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 
 object ServiceLocator {
@@ -21,6 +24,15 @@ object ServiceLocator {
                     .build()
                 chain.proceed(newRequest)
             }
+            .addInterceptor(
+                ChuckerInterceptor.Builder(appContext)
+                    .collector(ChuckerCollector(appContext))
+                    .maxContentLength(250000L)
+                    .redactHeaders(emptySet())
+                    .alwaysReadResponseBody(false)
+                    .build()
+            )
+            .addInterceptor(HttpLoggingInterceptor())
             .build()
     }
 

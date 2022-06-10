@@ -33,6 +33,8 @@ class TasksRepository {
             val updatedTask = response.body()!!
             if (oldTask != null) _taskList.value = taskList.value - oldTask
             _taskList.value = taskList.value + updatedTask
+        } else {
+            Log.e("TasksRepository", "Error while creating or updating task: ${response.message()}")
         }
     }
 }

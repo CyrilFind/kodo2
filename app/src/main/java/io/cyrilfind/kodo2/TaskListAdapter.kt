@@ -38,6 +38,10 @@ class TaskListAdapter(val listener: TaskListListener) :
             binding.taskItemTitle.text = item.title
             binding.taskItemDescription.text = item.description
             binding.root.setOnClickListener { listener.onClickEdit(item) }
+            binding.root.setOnLongClickListener { 
+                listener.onClickRemove(item) 
+                true
+            }
         }
     }
 
